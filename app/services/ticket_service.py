@@ -198,6 +198,8 @@ def allocate_ticket(
             payment_status="pending",
             is_active=True,
             attendant_id=attendant_id,
+            # Make sure parking_fee is properly handled if set
+            parking_fee=Decimal('0.00') if hasattr(ParkingTicket, 'parking_fee') else None
         )
         db.add(ticket)
 

@@ -10,3 +10,4 @@ def standard_response(status_code: int, message: str, data: Any = None):
             "data": data
         }
     )
+

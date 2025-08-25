@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query ,  HTTPException
 from sqlalchemy.orm import Session
 from decimal import Decimal
 
@@ -9,42 +9,42 @@ from app.utils.response import standard_response  # (status_code, message, data)
 router = APIRouter(prefix="/tickets", tags=["Parking Tickets"])
 from app.schemas.ticket import TicketListResponse , TicketClose , TicketCreate , TicketResponse
 
-# # --- helpers ---
-
-# def _ticket_to_dict(t) -> dict:
-#     """Serialize ParkingTicket ORM to JSON-safe dict."""
-#     return {
-#         "id": t.id,
-#         "ticket_number": t.ticket_number,
-#         "vehicle_id": t.vehicle_id,
-#         "driver_id": t.driver_id,
-#         "lot_id": t.lot_id,
-#         "slot_id": t.slot_id,
-#         "entry_time": t.entry_time.isoformat() if t.entry_time else None,
-#         "exit_time": t.exit_time.isoformat() if t.exit_time else None,
-#         "parking_fee": float(t.parking_fee) if isinstance(t.parking_fee, Decimal) else t.parking_fee,
-#         "payment_status": t.payment_status,
-#         "is_active": bool(t.is_active),
-#         "created_at": t.created_at.isoformat() if t.created_at else None,
-#         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
-#     }
 
 
-@router.post("/", response_model=TicketResponse)
+
+@router.post("/")
 def allocate_ticket(payload: TicketCreate, db: Session = Depends(get_db)):
-    ticket = ticket_service.allocate_ticket(
-        db=db,
-        driver_id=payload.driver_id,
-        vehicle_id=payload.vehicle_id,
-        lot_id=payload.lot_id,
-        attendant_id=payload.attendant_id
-    )
-    return standard_response(
-        status_code=201,
-        message="Ticket allocated successfully",
-        data=ticket
-    )
-
+    """Allocate a parking ticket"""
+    try:
+        # Get the ticket from service
+        ticket = ticket_service.allocate_ticket(
+            db=db,
+            driver_id=payload.driver_id,
+            vehicle_id=payload.vehicle_id,
+            lot_id=payload.lot_id,
+            attendant_id=payload.attendant_id
+        )
+        
+        # Convert ORM object to Pydantic model
+        ticket_data = TicketResponse.model_validate(ticket)
+        
+        return standard_response(
+            status_code=201,
+            message="Ticket allocated successfully",
+            data=ticket_data.model_dump()
+        )
+        
+    except HTTPException as e:
+        return standard_response(
+            status_code=e.status_code,
+            message=e.detail
+        )
+        
+    except Exception as e:
+        return standard_response(
+            status_code=500,
+            message="Failed to allocate ticket"
+        )
 
 
 @router.post("/{ticket_id}/close", response_model=TicketResponse)
