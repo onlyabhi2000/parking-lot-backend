@@ -213,6 +213,42 @@ def allocate_ticket(
         raise HTTPException(status_code=500, detail="Failed to allocate ticket")
 
 
+# def close_ticket(
+#     db: Session,
+#     ticket_id: int,
+#     mark_paid: bool = False,
+#     rate_per_hour: Decimal = Decimal("10.00"),
+#     min_fee: Decimal | None = None,
+# ) -> ParkingTicket:
+#     """
+#     Close a ticket: set exit_time, compute fee, free slot, update lot counters.
+#     - mark_paid: if True, sets payment_status='paid', else stays 'pending'
+#     """
+#     ticket = db.query(ParkingTicket).filter(
+#         ParkingTicket.id == ticket_id,
+#         ParkingTicket.is_active == True
+#     ).first()
+#     if not ticket:
+#         raise HTTPException(status_code=404, detail="Active ticket not found")
+
+#     ticket.exit_time = datetime.now(timezone.utc)()
+#     ticket.parking_fee = calculate_fee(ticket.entry_time, ticket.exit_time, rate_per_hour=rate_per_hour, min_fee=min_fee)
+#     ticket.is_active = False
+#     if mark_paid:
+#         ticket.payment_status = "paid"
+
+#     # Free the slot
+#     slot = db.query(ParkingSlot).filter(ParkingSlot.id == ticket.slot_id).first()
+#     if slot:
+#         slot.is_occupied = False
+#         db.add(slot)
+
+#     bump_lot_counters_on_free(db, ticket.lot_id)
+
+#     db.add(ticket)
+#     db.commit()
+#     db.refresh(ticket)
+#     return ticket
 def close_ticket(
     db: Session,
     ticket_id: int,
@@ -220,10 +256,7 @@ def close_ticket(
     rate_per_hour: Decimal = Decimal("10.00"),
     min_fee: Decimal | None = None,
 ) -> ParkingTicket:
-    """
-    Close a ticket: set exit_time, compute fee, free slot, update lot counters.
-    - mark_paid: if True, sets payment_status='paid', else stays 'pending'
-    """
+    """Close a ticket and calculate parking fee"""
     ticket = db.query(ParkingTicket).filter(
         ParkingTicket.id == ticket_id,
         ParkingTicket.is_active == True
@@ -231,17 +264,24 @@ def close_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Active ticket not found")
 
-    ticket.exit_time = datetime.now(timezone.utc)()
-    ticket.parking_fee = calculate_fee(ticket.entry_time, ticket.exit_time, rate_per_hour=rate_per_hour, min_fee=min_fee)
+    # ✅ FIXED: Remove extra parentheses
+    ticket.exit_time = datetime.now(timezone.utc)
+    ticket.parking_fee = calculate_fee(
+        ticket.entry_time, 
+        ticket.exit_time, 
+        rate_per_hour=rate_per_hour, 
+        min_fee=min_fee
+    )
     ticket.is_active = False
     if mark_paid:
         ticket.payment_status = "paid"
 
     # Free the slot
-    slot = db.query(ParkingSlot).filter(ParkingSlot.id == ticket.slot_id).first()
-    if slot:
-        slot.is_occupied = False
-        db.add(slot)
+    if ticket.slot_id:
+        slot = db.query(ParkingSlot).filter(ParkingSlot.id == ticket.slot_id).first()
+        if slot:
+            slot.is_occupied = False
+            db.add(slot)
 
     bump_lot_counters_on_free(db, ticket.lot_id)
 
@@ -251,14 +291,49 @@ def close_ticket(
     return ticket
 
 
+# def get_ticket(db: Session, ticket_id: int) -> ParkingTicket:
+#     ticket = db.query(ParkingTicket).filter(ParkingTicket.id == ticket_id).first()
+#     if not ticket:
+#         raise HTTPException(status_code=404, detail="Ticket not found")
+#     return ticket
+
+
+# def list_active_tickets(db: Session, lot_id: int | None = None, driver_id: int | None = None, vehicle_id: int | None = None) -> list[ParkingTicket]:
+#     q = db.query(ParkingTicket).filter(ParkingTicket.is_active == True)
+#     if lot_id:
+#         q = q.filter(ParkingTicket.lot_id == lot_id)
+#     if driver_id:
+#         q = q.filter(ParkingTicket.driver_id == driver_id)
+#     if vehicle_id:
+#         q = q.filter(ParkingTicket.vehicle_id == vehicle_id)
+#     return q.all()
+
+
+# def list_ticket_history(db: Session, lot_id: int | None = None, driver_id: int | None = None, vehicle_id: int | None = None) -> list[ParkingTicket]:
+#     q = db.query(ParkingTicket).filter(ParkingTicket.is_active == False)
+#     if lot_id:
+#         q = q.filter(ParkingTicket.lot_id == lot_id)
+#     if driver_id:
+#         q = q.filter(ParkingTicket.driver_id == driver_id)
+#     if vehicle_id:
+#         q = q.filter(ParkingTicket.vehicle_id == vehicle_id)
+#     return q.all()
 def get_ticket(db: Session, ticket_id: int) -> ParkingTicket:
+    """Get ticket by ID"""
     ticket = db.query(ParkingTicket).filter(ParkingTicket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
 
-
-def list_active_tickets(db: Session, lot_id: int | None = None, driver_id: int | None = None, vehicle_id: int | None = None) -> list[ParkingTicket]:
+def list_active_tickets(
+    db: Session, 
+    lot_id: int | None = None, 
+    driver_id: int | None = None, 
+    vehicle_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0
+) -> list[ParkingTicket]:
+    """List active tickets with optional filtering"""
     q = db.query(ParkingTicket).filter(ParkingTicket.is_active == True)
     if lot_id:
         q = q.filter(ParkingTicket.lot_id == lot_id)
@@ -266,10 +341,17 @@ def list_active_tickets(db: Session, lot_id: int | None = None, driver_id: int |
         q = q.filter(ParkingTicket.driver_id == driver_id)
     if vehicle_id:
         q = q.filter(ParkingTicket.vehicle_id == vehicle_id)
-    return q.all()
+    return q.offset(offset).limit(limit).all()
 
-
-def list_ticket_history(db: Session, lot_id: int | None = None, driver_id: int | None = None, vehicle_id: int | None = None) -> list[ParkingTicket]:
+def list_ticket_history(
+    db: Session, 
+    lot_id: int | None = None, 
+    driver_id: int | None = None, 
+    vehicle_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0
+) -> list[ParkingTicket]:
+    """List ticket history with optional filtering"""
     q = db.query(ParkingTicket).filter(ParkingTicket.is_active == False)
     if lot_id:
         q = q.filter(ParkingTicket.lot_id == lot_id)
@@ -277,4 +359,4 @@ def list_ticket_history(db: Session, lot_id: int | None = None, driver_id: int |
         q = q.filter(ParkingTicket.driver_id == driver_id)
     if vehicle_id:
         q = q.filter(ParkingTicket.vehicle_id == vehicle_id)
-    return q.all()
+    return q.offset(offset).limit(limit).order_by(ParkingTicket.exit_time.desc()).all()
