@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.models.vehicle import Vehicle
 from app.models.driver import Driver
-from app.schemas.vehicles import VehicleCreate
+from app.schemas.vehicles import VehicleCreate , VehicleOut  , VehicleSearch
 
 def create_vehicle(db: Session, payload: VehicleCreate) -> Vehicle:
     existing = db.query(Vehicle).filter(Vehicle.plate_number == payload.plate_number).first()
@@ -25,3 +25,19 @@ def get_vehicle(db: Session, vehicle_id: int) -> Vehicle:
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
     return vehicle
+
+
+## service  code to  seach vehicle by coloe-make , vheicle type and model 
+def vehicle_filter(db: Session, filters: VehicleSearch):
+    query = db.query(Vehicle)
+
+    if filters.make:
+        query = query.filter(Vehicle.make.ilike(f"%{filters.make}%"))
+    if filters.model:
+        query = query.filter(Vehicle.model.ilike(f"%{filters.model}%"))
+    if filters.color:
+        query = query.filter(Vehicle.color.ilike(f"%{filters.color}%"))
+    if filters.vehicle_type:
+        query = query.filter(Vehicle.vehicle_type.ilike(f"%{filters.vehicle_type}%"))
+
+    return query.all()
